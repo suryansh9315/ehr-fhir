@@ -1,31 +1,30 @@
 /**
- * Epic open sandbox test patients (open.epic.com)
- * These are publicly available test patient IDs — not real PHI.
- * Full list: https://open.epic.com/MyApps/Endpoints
+ * Test patients loaded into the local HAPI FHIR server by seed-hapi.ts.
+ * These are synthetic patients — not real PHI.
  */
 export const EPIC_TEST_PATIENTS = [
   {
-    fhirId: 'eQUelYbRC.bFXMDBgGKHpsA3',
+    fhirId: 'patient-camila',
     name: 'Camila Lopez',
     condition: 'Diabetes',
   },
   {
-    fhirId: 'erXuFYUfucBZaryVksYEcMg3',
+    fhirId: 'patient-derrick',
     name: 'Derrick Lin',
     condition: 'COPD',
   },
   {
-    fhirId: 'eq081-VQEgP8drUUqCWzHfw3',
+    fhirId: 'patient-jessica',
     name: 'Jessica Martinez',
     condition: 'Hypertension',
   },
   {
-    fhirId: 'eAB3mDIBBcyUKviyzrxsnAw3',
+    fhirId: 'patient-theodore',
     name: 'Theodore Franklin',
     condition: 'CHF',
   },
   {
-    fhirId: 'e63wRTbPfr1p8UW81d8Seiw3',
+    fhirId: 'patient-leonardo',
     name: 'Leonardo Patterson',
     condition: 'CKD',
   },

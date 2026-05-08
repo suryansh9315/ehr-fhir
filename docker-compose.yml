@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: ankane/pgvector:pg16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ehr
       POSTGRES_USER: ehr
@@ -44,6 +44,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    ports:
+      - "8080:8080"
+    environment:
+      hapi.fhir.fhir_version: R4
+      hapi.fhir.allow_external_references: "true"
+      hapi.fhir.reuse_cached_search_results_millis: "-1"
 
   patient-service:
     build:
@@ -108,6 +117,8 @@ services:
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio_local}
+      FHIR_BASE_URL: http://hapi-fhir:8080/fhir
+      FHIR_AUTH_TYPE: none
     volumes:
       - ./keys:/app/keys:ro
     depends_on:
@@ -117,7 +128,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    # NOTE: no hapi-fhir dependency — Epic sandbox is external
+      hapi-fhir:
+        condition: service_started
 
 volumes:
   postgres_data:

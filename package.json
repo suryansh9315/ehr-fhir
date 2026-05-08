@@ -9,6 +9,7 @@
     "dev": "docker compose up -d",
     "dev:down": "docker compose down",
     "dev:reset": "docker compose down -v && docker compose up -d",
+    "seed:fhir": "tsx scripts/seed/seed-hapi.ts",
     "seed:demo": "tsx scripts/demo/demo-flow.ts",
     "token": "tsx scripts/seed/generate-token.ts",
     "build": "tsc -b packages/shared/tsconfig.json packages/fhir-client/tsconfig.json packages/patient-service/tsconfig.json packages/nlp-pipeline/tsconfig.json packages/job-worker/tsconfig.json packages/webhook-service/tsconfig.json",
@@ -21,5 +22,11 @@
     "ts-jest": "^29.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "axios": "^1.16.0",
+    "dotenv": "^17.4.2",
+    "groq-sdk": "^1.1.2"
   }
 }

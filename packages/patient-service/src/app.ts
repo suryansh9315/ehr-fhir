@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import { jwtMiddleware, createLogger } from '@ehr/shared';
 import { healthRoutes } from './routes/health';
@@ -26,7 +26,7 @@ export function buildApp() {
   app.register(jobRoutes);
   app.register(carePlanRoutes);
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
     logger.error('Unhandled error', { err: error });
     reply.code(error.statusCode ?? 500).send({
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,

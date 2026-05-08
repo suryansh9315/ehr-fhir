@@ -21,33 +21,8 @@ async function processJob(job: Job<EhrWritebackJobData>): Promise<void> {
   const carePlan = buildCarePlan(job.data);
   validateCarePlan(carePlan); // throws if malformed
 
-  const authType = process.env.FHIR_AUTH_TYPE ?? 'none';
-
-  if (authType === 'none') {
-    // Open sandbox is read-only — log warning, mark job as 'skipped'
-    const skipMessage =
-      'Writeback skipped: FHIR_AUTH_TYPE=none (open.epic.com is read-only). ' +
-      'CarePlan constructed and validated successfully but not sent to Epic. ' +
-      'Set FHIR_AUTH_TYPE=smart to enable writeback. See README > Epic App Registration.';
-
-    logger.warn(skipMessage, { jobId, carePlanTitle: carePlan.title });
-
-    await query(
-      "UPDATE jobs SET status = 'skipped', error = $1, completed_at = NOW() WHERE id = $2",
-      [skipMessage, jobId]
-    );
-
-    // Log to sync_log
-    await query(
-      `INSERT INTO sync_log (tenant_id, resource_type, direction, status, error)
-       VALUES ((SELECT id FROM tenants WHERE slug = $1), 'CarePlan', 'outbound', 'skipped', $2)`,
-      [tenantId, skipMessage]
-    );
-
-    return;
-  }
-
-  // SMART mode — AuthManager handles token acquisition transparently
+  // Write to FHIR server — works with both FHIR_AUTH_TYPE=none (HAPI, no auth required)
+  // and FHIR_AUTH_TYPE=smart (Epic, RS384 JWT client credentials)
   try {
     const fhirClient = createFHIRClientFromEnv(tenantId);
     const result = await fhirClient.createCarePlan(carePlan);
@@ -63,7 +38,7 @@ async function processJob(job: Job<EhrWritebackJobData>): Promise<void> {
       [tenantId, result.id ?? 'unknown']
     );
 
-    logger.info('CarePlan written to Epic FHIR', { jobId, carePlanId: result.id });
+    logger.info('CarePlan written to FHIR server', { jobId, carePlanId: result.id });
   } catch (err) {
     const errMsg = (err as Error).message;
     logger.error('EHR writeback failed', { err, jobId });

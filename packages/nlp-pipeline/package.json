@@ -9,11 +9,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.0",
     "@ehr/shared": "*",
-    "@fastify/cors": "^9.0.0",
+    "@fastify/cors": "^11.2.0",
     "bullmq": "^5.0.0",
-    "fastify": "^4.0.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.5",
+    "groq-sdk": "^1.1.2",
     "uuid": "^9.0.0",
     "zod": "^3.0.0"
   },

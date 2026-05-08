@@ -87,10 +87,10 @@ async function main() {
   const STEPS = 5;
 
   // ─── Step 1: Epic connectivity ───────────────────────────────
-  print(1, STEPS, 'Checking Epic sandbox connectivity...');
+  print(1, STEPS, 'Checking HAPI FHIR server connectivity...');
   try {
     const resp = await axios.get(
-      `${process.env.FHIR_BASE_URL ?? 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4'}/metadata`,
+      `${process.env.FHIR_BASE_URL ?? 'http://localhost:8080/fhir'}/metadata`,
       { headers: { Accept: 'application/fhir+json' }, timeout: 10_000 }
     );
     ok(`CapabilityStatement received (FHIR ${resp.data.fhirVersion ?? 'R4'})`);
@@ -101,7 +101,7 @@ async function main() {
   }
 
   // ─── Step 2: Bulk ingest ──────────────────────────────────────
-  print(2, STEPS, `Ingesting ${EPIC_TEST_PATIENTS.length} patients from Epic open sandbox...`);
+  print(2, STEPS, `Ingesting ${EPIC_TEST_PATIENTS.length} patients from HAPI FHIR...`);
 
   const ingestResp = await axios.post(
     `${PATIENT_SERVICE}/api/v1/patients/ingest`,
@@ -134,7 +134,10 @@ async function main() {
     process.exit(1);
   }
 
-  const firstPatient = patients[0];
+  // Prefer a patient with encounters for the writeback demo; fall back to first
+  const firstPatient = patients.find((p: { demographics?: { name?: string } }) =>
+    p.demographics?.name?.includes('Franklin')
+  ) ?? patients[0];
   const patientId = firstPatient.id;
   const patientName = firstPatient.demographics?.name ?? 'Unknown';
 
@@ -158,7 +161,7 @@ async function main() {
   ok(`Patient: ${patientName} | Encounters: ${encounterCount} | Medications: ${medicationCount}`);
 
   // ─── Step 4: NLP extraction ───────────────────────────────────
-  print(4, STEPS, 'Extracting clinical actions from discharge note (Claude AI)...');
+  print(4, STEPS, 'Extracting clinical actions from discharge note (Groq AI — Llama 4 Scout)...');
 
   const extractResp = await axios.post(
     `${NLP_SERVICE}/api/v1/notes/extract`,
@@ -182,10 +185,12 @@ async function main() {
   }
 
   // ─── Step 5: EHR writeback ────────────────────────────────────
-  print(5, STEPS, 'Triggering EHR writeback (CarePlan)...');
+  print(5, STEPS, 'Triggering EHR writeback (CarePlan to HAPI FHIR)...');
 
   // Get an encounter ID if available
   const encounterId = p2.data.encounters?.[0]?.id;
+
+  let writebackSummary = 'skipped (no encounter)';
 
   if (!encounterId) {
     info('No encounters found for this patient — skipping writeback');
@@ -223,12 +228,13 @@ async function main() {
     );
 
     if (writebackStatus === 'skipped') {
-      info(`Status: skipped`);
-      info('Reason: Writeback requires SMART credentials (open.epic.com is read-only)');
-      info('See README > Epic App Registration to enable full writeback');
+      writebackSummary = 'skipped';
+      info(`Status: skipped — ${jobDetails.data.error ?? ''}`);
     } else if (writebackStatus === 'completed') {
-      ok('CarePlan written to Epic FHIR');
+      writebackSummary = 'completed';
+      ok('CarePlan written to HAPI FHIR');
     } else {
+      writebackSummary = writebackStatus;
       info(`Status: ${writebackStatus} — ${jobDetails.data.error ?? ''}`);
     }
   }
@@ -241,7 +247,7 @@ async function main() {
   console.log(`  Encounters:           ${encounterCount}`);
   console.log(`  Medications:          ${medicationCount}`);
   console.log(`  Actions extracted:    ${actions.length}`);
-  console.log(`  Writeback:            ${encounterId ? (process.env.FHIR_AUTH_TYPE === 'smart' ? 'completed' : 'skipped (open sandbox)') : 'skipped (no encounter)'}`);
+  console.log(`  Writeback:            ${writebackSummary}`);
   console.log('');
   console.log('  Service URLs:');
   console.log(`    patient-service:  ${PATIENT_SERVICE}/health`);

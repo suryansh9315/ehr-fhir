@@ -64,12 +64,12 @@ export async function extractRoutes(app: FastifyInstance): Promise<void> {
       // Preprocess note
       const cleanedNote = preprocessNote(note_text);
 
-      // Extract via Claude
+      // Extract via Groq
       let extractionResult;
       try {
         extractionResult = await extractor.extract(cleanedNote, patientContext, note_type);
       } catch (err) {
-        logger.error('Claude extraction failed', { err, patient_id });
+        logger.error('Groq extraction failed', { err, patient_id });
         return reply.code(502).send({ error: 'AI extraction service unavailable. Please retry.' });
       }
 

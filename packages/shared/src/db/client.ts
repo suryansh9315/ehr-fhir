@@ -60,7 +60,9 @@ export async function closePool(): Promise<void> {
 
 export async function checkConnection(): Promise<boolean> {
   try {
-    await query('SELECT 1');
+    const client = await getPool().connect();
+    await client.query('SELECT 1');
+    client.release();
     return true;
   } catch {
     return false;

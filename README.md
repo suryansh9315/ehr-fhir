@@ -3,35 +3,38 @@
 AI-powered EHR integration backend for 2care.ai's post-discharge care platform.
 
 **Three core capabilities:**
-- **Ingest** — pull patient data from Epic FHIR R4 into a normalized store
+- **Ingest** — pull patient data from a FHIR R4 server into a normalized store
 - **Update** — write care plans and clinical actions back to the EHR
-- **Extract** — parse doctor notes with Claude AI to produce structured clinical actions
+- **Extract** — parse doctor notes with Groq AI (Llama 4 Scout) to produce structured clinical actions
 
-**Tech stack:** Node.js 22 · TypeScript · Fastify · PostgreSQL + pgvector · Redis · BullMQ · MinIO · Epic FHIR R4 · Claude API
+**Tech stack:** Node.js 22 · TypeScript · Fastify · PostgreSQL + pgvector · Redis · BullMQ · MinIO · HAPI FHIR R4 · Groq API
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** Docker Desktop, Node.js 22, an Anthropic API key, internet access (Epic sandbox)
+**Prerequisites:** Docker Desktop, Node.js 22, a Groq API key
 
 ```bash
 # 1. Clone and configure
 git clone <repo-url> ehr && cd ehr
 cp .env.example .env
-# Edit .env — set ANTHROPIC_API_KEY=sk-ant-...
+# Edit .env — set GROQ_API_KEY=gsk_...
 
-# 2. Start infrastructure
+# 2. Start all infrastructure (includes local HAPI FHIR server)
 docker compose up -d
 
 # 3. Install dependencies
 npm install
 
-# 4. Run the end-to-end demo
+# 4. Seed the local FHIR server with synthetic patients
+npm run seed:fhir
+
+# 5. Run the end-to-end demo
 npm run seed:demo
 ```
 
-That's it. The demo ingests 5 real Epic sandbox patients, extracts clinical actions using Claude, and demonstrates the full pipeline.
+That's it. The demo ingests 5 synthetic FHIR patients, extracts clinical actions using Groq (Llama 4 Scout), writes a CarePlan back to the local FHIR server, and demonstrates Redis caching.
 
 ---
 
@@ -40,8 +43,9 @@ That's it. The demo ingests 5 real Epic sandbox patients, extracts clinical acti
 | Service | URL | Description |
 |---|---|---|
 | patient-service | http://localhost:3001 | REST API — ingest, patients, jobs, care plans |
-| nlp-pipeline | http://localhost:3002 | Notes extraction via Claude AI |
+| nlp-pipeline | http://localhost:3002 | Notes extraction via Groq AI (Llama 4 Scout) |
 | webhook-service | http://localhost:3003 | Inbound FHIR subscription webhooks |
+| HAPI FHIR | http://localhost:8080/fhir | Local FHIR R4 server |
 | MinIO console | http://localhost:9001 | Object storage UI (user: `minio` / `minio_local`) |
 | PostgreSQL | localhost:5432 | Database (`ehr` / `ehr_local`) |
 | Redis | localhost:6379 | Cache + job queue |
@@ -63,14 +67,14 @@ npm run token
 # Prints: Bearer eyJ...
 ```
 
-### Ingest patients from Epic
+### Ingest patients from HAPI FHIR
 ```bash
 curl -X POST http://localhost:3001/api/v1/patients/ingest \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "tenant_id": "epic-sandbox",
-    "patient_ids": ["eQUelYbRC.bFXMDBgGKHpsA3"],
+    "patient_ids": ["patient-theodore","patient-camila"],
     "resources": ["Patient","Encounter","MedicationRequest","Condition"]
   }'
 # Response: 202 { job_id, status: "queued", status_url }
@@ -100,10 +104,10 @@ curl -X POST http://localhost:3002/api/v1/notes/extract \
     "note_text": "Discharge on Lasix 40mg BID, up from 20mg. Follow up cardiology 5-7 days. Refer cardiac rehab.",
     "note_type": "discharge_summary"
   }'
-# Response: { actions: [...], summary: "..." }
+# Response: { extraction_id, actions: [...], summary: "..." }
 ```
 
-### Submit care plan (writeback to Epic)
+### Submit care plan (writeback to FHIR)
 ```bash
 curl -X PUT http://localhost:3001/api/v1/patients/<patient_id>/care-plan \
   -H "Authorization: Bearer <token>" \
@@ -113,29 +117,31 @@ curl -X PUT http://localhost:3001/api/v1/patients/<patient_id>/care-plan \
     "updates": [{"type":"CarePlan","action":"add","data":{"title":"Post-discharge plan","activities":[{"detail":"Follow up cardiology within 7 days"}]}}]
   }'
 # Response: 202 { job_id }
-# Job status will be "skipped" without SMART credentials (see below)
+# Job completes with status: "completed" — CarePlan written to local HAPI FHIR
 ```
 
 ---
 
-## Epic Sandbox
+## FHIR Server
 
-Two Epic sandbox environments are used:
+The system ships with a local **HAPI FHIR** server (Docker) for development and demo.
 
 | Environment | URL | Auth | Write? |
 |---|---|---|---|
-| Open sandbox | open.epic.com | None required | Read-only |
-| SMART sandbox | fhir.epic.com | Client credentials (RS384 JWT) | Read + Write |
+| Local HAPI FHIR | http://localhost:8080/fhir | None required | Read + Write |
+| Epic SMART (production) | https://fhir.epic.com/... | Client credentials (RS384 JWT) | Read + Write |
 
-The default config (`FHIR_AUTH_TYPE=none`) uses the **open sandbox** — no registration needed.
+The default config (`FHIR_AUTH_TYPE=none`) targets the local HAPI server — no registration or internet access needed for FHIR operations.
 
-Writeback operations (POST /CarePlan) require SMART credentials. Without them, jobs complete with `status: skipped` and a clear message explaining how to enable them.
+### Why HAPI FHIR locally?
+
+Epic's sandbox (`fhir.epic.com`) requires OAuth credentials for all requests, including patient reads. HAPI FHIR provides a full FHIR R4 implementation with no auth required, making it ideal for local development and CI.
 
 ---
 
-## Epic App Registration (enables full writeback)
+## Epic App Registration (production writeback)
 
-To enable writeback to Epic:
+To point the system at Epic FHIR instead of the local HAPI server:
 
 **1. Generate an RSA key pair:**
 ```bash
@@ -152,6 +158,7 @@ openssl rsa -in keys/epic-private.pem -pubout -out keys/epic-public.pem
 **3. Update `.env`:**
 ```bash
 FHIR_AUTH_TYPE=smart
+FHIR_BASE_URL=https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4
 FHIR_CLIENT_ID=<your-client-id>
 FHIR_PRIVATE_KEY_PATH=./keys/epic-private.pem
 FHIR_TOKEN_URL=https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token
@@ -162,8 +169,6 @@ FHIR_TOKEN_URL=https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token
 docker compose restart job-worker
 ```
 
-**5. Re-run the demo** — writeback jobs will now show `status: completed` and return a FHIR CarePlan ID.
-
 > The private key is gitignored (`keys/*.pem`) and never committed.
 
 ---
@@ -173,7 +178,7 @@ docker compose restart job-worker
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system design including:
 - Component diagram (Mermaid)
 - SMART on FHIR authentication flow
-- Claude tool-calling schema
+- Groq tool-calling schema
 - Data flow diagrams
 - Trade-off analysis
 
@@ -183,34 +188,47 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system design including:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key for Claude |
+| `GROQ_API_KEY` | Yes | — | Groq API key (get one at console.groq.com) |
+| `GROQ_MODEL` | No | `meta-llama/llama-4-scout-17b-16e-instruct` | Groq model to use |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `REDIS_URL` | Yes | `redis://localhost:6379` | Redis URL |
-| `FHIR_BASE_URL` | Yes | Epic R4 URL | FHIR server base URL |
-| `FHIR_AUTH_TYPE` | No | `none` | `none` or `smart` |
+| `REDIS_URL` | No | `redis://localhost:6379` | Redis URL |
+| `FHIR_BASE_URL` | No | `http://localhost:8080/fhir` | FHIR server base URL |
+| `FHIR_AUTH_TYPE` | No | `none` | `none` (HAPI, no auth) or `smart` (Epic) |
 | `FHIR_CLIENT_ID` | If SMART | — | Epic app client ID |
 | `FHIR_PRIVATE_KEY_PATH` | If SMART | — | Path to RS384 private key PEM |
 | `FHIR_TOKEN_URL` | If SMART | — | Epic OAuth2 token endpoint |
 | `JWT_SECRET` | No | `local-dev-secret` | JWT signing secret (local dev) |
-| `SKIP_AUTH` | No | `false` | Set `true` to bypass JWT in dev |
-| `S3_ENDPOINT` | No | MinIO URL | S3-compatible endpoint |
+| `S3_ENDPOINT` | No | `http://localhost:9000` | S3-compatible endpoint (MinIO locally) |
 | `S3_BUCKET` | No | `ehr-documents` | Storage bucket name |
 
 ---
 
 ## Troubleshooting
 
-**Epic sandbox returns 401:**
-Make sure `FHIR_AUTH_TYPE=none` for the open sandbox. The open sandbox does not accept bearer tokens.
+**HAPI FHIR takes a while to start:**
+HAPI is a Java service — allow ~30s after `docker compose up` before running `npm run seed:fhir`. If the seed fails with a connection error, wait a moment and retry.
+
+**Seeded data is gone after container restart:**
+HAPI has no persistent volume in this setup. Re-run `npm run seed:fhir` after any HAPI container recreation.
+
+**BullMQ jobs stuck or not processing:**
+Stale jobs from previous runs can block the queue. Flush Redis and re-seed:
+```bash
+docker exec ehr-redis-1 redis-cli FLUSHALL
+npm run seed:fhir
+npm run seed:demo
+```
+
+Check worker logs: `docker compose logs -f job-worker`
+
+**Groq extraction fails:**
+Verify `GROQ_API_KEY` is set correctly in `.env`. Check nlp-pipeline health:
+```bash
+curl http://localhost:3002/health
+```
 
 **pgvector extension missing:**
-The docker-compose uses `ankane/pgvector:pg16` which includes pgvector. If using a different postgres image, run `CREATE EXTENSION IF NOT EXISTS vector;` manually.
-
-**BullMQ jobs not processing:**
-Check the job-worker container logs: `docker compose logs -f job-worker`
-
-**Claude extraction fails:**
-Verify `ANTHROPIC_API_KEY` is set correctly in `.env`. Check nlp-pipeline health: `curl http://localhost:3002/health`
+The docker-compose uses `pgvector/pgvector:pg16` which includes pgvector. If using a different postgres image, run `CREATE EXTENSION IF NOT EXISTS vector;` manually.
 
 **MinIO bucket not found:**
 The job-worker creates the bucket on startup. If it fails, access the MinIO console at http://localhost:9001 and create an `ehr-documents` bucket manually.

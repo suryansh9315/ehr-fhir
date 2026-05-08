@@ -1,36 +1,36 @@
 import { FastifyInstance } from 'fastify';
 import { checkConnection, checkRedisConnection } from '@ehr/shared';
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 
-let claudeHealthy: boolean | null = null;
-let claudeCheckedAt = 0;
-const CLAUDE_CACHE_TTL = 60_000; // 1 minute
+let groqHealthy: boolean | null = null;
+let groqCheckedAt = 0;
+const GROQ_CACHE_TTL = 60_000; // 1 minute
 
-async function checkClaude(): Promise<boolean> {
-  if (claudeHealthy !== null && Date.now() - claudeCheckedAt < CLAUDE_CACHE_TTL) {
-    return claudeHealthy;
+async function checkGroq(): Promise<boolean> {
+  if (groqHealthy !== null && Date.now() - groqCheckedAt < GROQ_CACHE_TTL) {
+    return groqHealthy;
   }
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    await client.messages.create({
-      model: 'claude-haiku-4-5',
+    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    await client.chat.completions.create({
+      model: process.env.GROQ_MODEL ?? 'meta-llama/llama-4-scout-17b-16e-instruct',
       max_tokens: 1,
       messages: [{ role: 'user', content: 'ping' }],
     });
-    claudeHealthy = true;
+    groqHealthy = true;
   } catch {
-    claudeHealthy = false;
+    groqHealthy = false;
   }
-  claudeCheckedAt = Date.now();
-  return claudeHealthy;
+  groqCheckedAt = Date.now();
+  return groqHealthy;
 }
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health', async (_req, reply) => {
-    const [postgres, redis, claude] = await Promise.all([
+    const [postgres, redis, groq] = await Promise.all([
       checkConnection(),
       checkRedisConnection(),
-      checkClaude(),
+      checkGroq(),
     ]);
 
     const status = postgres && redis ? 'ok' : 'degraded';
@@ -41,7 +41,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
       checks: {
         postgres: postgres ? 'ok' : 'error',
         redis: redis ? 'ok' : 'error',
-        claude: claude ? 'ok' : 'error',
+        groq: groq ? 'ok' : 'error',
       },
     });
   });

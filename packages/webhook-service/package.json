@@ -1,0 +1,22 @@
+{
+  "name": "@ehr/webhook-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@ehr/shared": "*",
+    "@fastify/cors": "^9.0.0",
+    "bullmq": "^5.0.0",
+    "fastify": "^4.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^9.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  }
+}

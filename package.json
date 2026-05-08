@@ -1,0 +1,25 @@
+{
+  "name": "ehr",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "docker compose up -d",
+    "dev:down": "docker compose down",
+    "dev:reset": "docker compose down -v && docker compose up -d",
+    "seed:demo": "tsx scripts/demo/demo-flow.ts",
+    "token": "tsx scripts/seed/generate-token.ts",
+    "build": "tsc -b packages/shared/tsconfig.json packages/fhir-client/tsconfig.json packages/patient-service/tsconfig.json packages/nlp-pipeline/tsconfig.json packages/job-worker/tsconfig.json packages/webhook-service/tsconfig.json",
+    "test": "jest --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "concurrently": "^8.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  }
+}

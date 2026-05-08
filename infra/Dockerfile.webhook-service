@@ -1,0 +1,28 @@
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+COPY package.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/webhook-service/package.json ./packages/webhook-service/
+
+RUN npm install --workspace=packages/shared --workspace=packages/webhook-service
+
+COPY packages/shared ./packages/shared
+COPY packages/webhook-service ./packages/webhook-service
+COPY tsconfig.json ./
+
+RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/webhook-service
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/webhook-service/dist ./packages/webhook-service/dist
+COPY --from=builder /app/packages/webhook-service/package.json ./packages/webhook-service/package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+EXPOSE 3003
+CMD ["node", "packages/webhook-service/dist/index.js"]

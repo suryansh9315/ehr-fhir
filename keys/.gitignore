@@ -1,0 +1,6 @@
+# Never commit private keys to version control
+*.pem
+*.key
+*.p12
+*.pfx
+!.gitignore

@@ -1,0 +1,28 @@
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+COPY package.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/nlp-pipeline/package.json ./packages/nlp-pipeline/
+
+RUN npm install --workspace=packages/shared --workspace=packages/nlp-pipeline
+
+COPY packages/shared ./packages/shared
+COPY packages/nlp-pipeline ./packages/nlp-pipeline
+COPY tsconfig.json ./
+
+RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/nlp-pipeline
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/nlp-pipeline/dist ./packages/nlp-pipeline/dist
+COPY --from=builder /app/packages/nlp-pipeline/package.json ./packages/nlp-pipeline/package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+EXPOSE 3002
+CMD ["node", "packages/nlp-pipeline/dist/index.js"]

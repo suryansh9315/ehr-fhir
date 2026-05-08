@@ -1,0 +1,41 @@
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+COPY package.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/fhir-client/package.json ./packages/fhir-client/
+COPY packages/nlp-pipeline/package.json ./packages/nlp-pipeline/
+COPY packages/job-worker/package.json ./packages/job-worker/
+
+RUN npm install \
+  --workspace=packages/shared \
+  --workspace=packages/fhir-client \
+  --workspace=packages/nlp-pipeline \
+  --workspace=packages/job-worker
+
+COPY packages/shared ./packages/shared
+COPY packages/fhir-client ./packages/fhir-client
+COPY packages/nlp-pipeline ./packages/nlp-pipeline
+COPY packages/job-worker ./packages/job-worker
+COPY tsconfig.json ./
+
+RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/fhir-client
+RUN npm run build --workspace=packages/nlp-pipeline
+RUN npm run build --workspace=packages/job-worker
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/fhir-client/dist ./packages/fhir-client/dist
+COPY --from=builder /app/packages/fhir-client/package.json ./packages/fhir-client/package.json
+COPY --from=builder /app/packages/nlp-pipeline/dist ./packages/nlp-pipeline/dist
+COPY --from=builder /app/packages/nlp-pipeline/package.json ./packages/nlp-pipeline/package.json
+COPY --from=builder /app/packages/job-worker/dist ./packages/job-worker/dist
+COPY --from=builder /app/packages/job-worker/package.json ./packages/job-worker/package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+CMD ["node", "packages/job-worker/dist/index.js"]

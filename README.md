@@ -9,6 +9,8 @@ AI-powered EHR integration backend for 2care.ai's post-discharge care platform.
 
 **Tech stack:** Node.js 22 · TypeScript · Fastify · PostgreSQL + pgvector · Redis · BullMQ · MinIO · HAPI FHIR R4 · Groq API
 
+> **Implementation status:** Core pipeline (ingest → extract → writeback) is fully working. Features marked _(planned)_ below are designed and scaffolded but not yet implemented.
+
 ---
 
 ## Quick Start
@@ -44,7 +46,7 @@ That's it. The demo ingests 5 synthetic FHIR patients, extracts clinical actions
 |---|---|---|
 | patient-service | http://localhost:3001 | REST API — ingest, patients, jobs, care plans |
 | nlp-pipeline | http://localhost:3002 | Notes extraction via Groq AI (Llama 4 Scout) |
-| webhook-service | http://localhost:3003 | Inbound FHIR subscription webhooks |
+| webhook-service | http://localhost:3003 | Inbound FHIR subscription webhook receiver |
 | HAPI FHIR | http://localhost:8080/fhir | Local FHIR R4 server |
 | MinIO console | http://localhost:9001 | Object storage UI (user: `minio` / `minio_local`) |
 | PostgreSQL | localhost:5432 | Database (`ehr` / `ehr_local`) |
@@ -170,6 +172,26 @@ docker compose restart job-worker
 ```
 
 > The private key is gitignored (`keys/*.pem`) and never committed.
+
+---
+
+## What's Implemented vs Planned
+
+| Feature | Status | Notes |
+|---|---|---|
+| Patient ingest (FHIR → PostgreSQL) | **Implemented** | |
+| Redis caching on patient reads (`X-Cache` headers) | **Implemented** | 5-min TTL |
+| Groq AI action extraction (tool-calling) | **Implemented** | Llama 4 Scout |
+| CarePlan writeback to FHIR | **Implemented** | Works with HAPI and Epic SMART |
+| Raw FHIR bundle storage in MinIO | **Implemented** | |
+| FHIR rate limiter + retry policy | **Implemented** | Token bucket, exponential backoff |
+| Note-extract async worker | **Implemented** | Triggered manually via API |
+| Webhook receiver (inbound FHIR subscriptions) | **Implemented** | Receives + enqueues ingest jobs |
+| FHIR subscription registration | _(planned)_ | Webhook receipt works; auto-registration does not exist yet |
+| Auto-trigger note extraction from ingest | _(planned)_ | `DocumentReference` not yet fetched/processed during ingest |
+| Redis pub/sub consumers | _(planned)_ | Events are published (`patient.ingested`, `action.extracted`) but nothing subscribes yet |
+| Semantic search via pgvector | _(planned)_ | Schema + index ready; no embedding generation or search endpoint |
+| PHI redaction in logs | _(planned)_ | Logging is plain Winston; no field-level redaction |
 
 ---
 

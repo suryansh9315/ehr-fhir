@@ -3,6 +3,8 @@
 > **Author:** Keshav | **Date:** 2026-05-08 | **Version:** 2.0
 > **Context:** 2care.ai assignment — AI-powered post-discharge care platform
 
+> **Implementation status:** Features marked ✓ are fully implemented and demonstrated by `npm run seed:demo`. Features marked _(planned)_ are designed and scaffolded (types, schema, service stubs) but the implementation code does not yet exist.
+
 ---
 
 ## Table of Contents
@@ -225,16 +227,18 @@ sync_log (id, tenant_id, resource_type, direction, status, error, timestamp)
 Processes free-text clinical notes through Groq AI (Llama 4 Scout) to extract structured actions.
 
 **Pipeline steps:**
-1. **Receive** — note text arrives via API call or async job.
-2. **Preprocess** — strip formatting artifacts, segment into sections (HPI, Assessment, Plan) using rule-based heuristics.
-3. **Extract** — send to Groq API with structured tool-calling (see [Section 7](#7-ai-backend-architecture)).
-4. **Validate** — check extracted actions against known medication lists, ICD codes, and provider directories.
-5. **Store** — persist structured actions to `extracted_actions` table.
-6. **Notify** — emit event for downstream consumers (Maya, dashboard).
+1. **Receive** — note text arrives via API call (`POST /api/v1/notes/extract`) or async job.
+2. **Preprocess** — strip formatting artifacts, segment into sections using rule-based heuristics. ✓ implemented
+3. **Extract** — send to Groq API with forced tool-calling (`extract_clinical_actions`). ✓ implemented
+4. **Validate** — confidence scoring via heuristics; actions below 0.7 flagged for review. ✓ implemented
+5. **Store** — persist structured actions to `extracted_actions` table. ✓ implemented
+6. **Notify** — emit `action.extracted` event to Redis pub/sub. ✓ published _(consumers not yet implemented)_
+
+> **Planned:** During ingest, `DocumentReference` resources are not yet fetched or queued for extraction. Currently, note extraction is triggered only via direct API call.
 
 **Failure handling:**
-- If Groq API is unavailable, the note is requeued with exponential backoff (max 5 retries over 2 hours).
-- If extraction confidence is below 0.7, the action is flagged for human review.
+- If Groq API is unavailable, returns 502 to caller; async worker retries with exponential backoff.
+- If extraction confidence is below 0.7, the action is stored with `status: pending` and flagged for human review.
 
 ### 4.5 Async Job Queue
 
@@ -267,14 +271,13 @@ Processes free-text clinical notes through Groq AI (Llama 4 Scout) to extract st
 Handles real-time EHR synchronization and internal event distribution.
 
 **Inbound (EHR to us):**
-- Register FHIR Subscriptions on supported EHR systems for `Encounter`, `DocumentReference`, and `MedicationRequest` changes.
-- Webhook endpoint validates HMAC signatures, deduplicates by event ID, and enqueues a sync job.
-- Fallback: for EHRs without subscription support, a cron-based poller checks for changes every 15 minutes using `_lastUpdated` search parameters.
+- Webhook endpoint (`POST /webhooks/fhir`) receives FHIR subscription notifications, validates HMAC signatures, extracts patient references, and enqueues bulk-ingest jobs. ✓ implemented
+- _(Planned)_ Automatic registration of FHIR Subscriptions on EHR systems at tenant onboarding — not yet implemented.
+- _(Planned)_ Cron-based polling fallback for EHRs without subscription support — not yet implemented.
 
 **Internal events (us to consumers):**
-- Event bus using Redis Pub/Sub for lightweight internal notifications.
-- Events: `patient.ingested`, `patient.updated`, `action.extracted`, `action.approved`, `sync.failed`.
-- Consumers (Maya, WhatsApp service) subscribe to relevant channels.
+- Redis Pub/Sub channels: `patient.ingested`, `action.extracted` — events are published by the ingest and extract workers. ✓ published
+- _(Planned)_ Actual subscribers (Maya, WhatsApp service, dashboard) are not yet implemented. Events are emitted but nothing consumes them.
 
 ---
 
@@ -608,12 +611,13 @@ Groq/Llama does not natively output calibrated confidence scores. The system app
 
 This is computed post-extraction by the validation layer (`ActionValidator.ts`), not by the model.
 
-### Embedding Generation
+### Embedding Generation _(planned)_
 
 For semantic search across notes (e.g., "find all notes mentioning cardiac rehab referrals"):
-- Generate embeddings using a lightweight model.
-- Store in PostgreSQL via `pgvector` extension.
+- Generate embeddings using a lightweight model and store in PostgreSQL via `pgvector`.
 - Query with cosine similarity for retrieval-augmented workflows.
+
+> **Not yet implemented.** The `note_embeddings` table and `ivfflat` index exist in the schema, but no code generates or stores embeddings. No semantic search endpoint exists.
 
 ---
 
@@ -657,7 +661,7 @@ For semantic search across notes (e.g., "find all notes mentioning cardiac rehab
 | **Encryption in transit** | TLS 1.3 everywhere. Internal service mesh via mTLS (AWS App Mesh or Linkerd). |
 | **Authentication** | OAuth 2.0 tokens (Keycloak) for internal services. SMART on FHIR for EHR access. |
 | **Authorization** | Scope-based access control (`patient:read`, `patient:write`, `notes:extract`). Tenant-scoped tokens. |
-| **PHI in logs** | Structured logging with automatic PHI redaction (patient names, MRNs, DOBs stripped before log output). |
+| **PHI in logs** | _(Planned)_ Structured logging via Winston; field-level PHI redaction (names, MRNs, DOBs) not yet implemented. |
 | **Secrets management** | AWS Secrets Manager for EHR credentials, API keys. Rotated every 90 days. |
 | **Vulnerability scanning** | Semgrep in CI; Dependabot for dependency updates; container scanning via Trivy. |
 

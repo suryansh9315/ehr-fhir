@@ -5,6 +5,3 @@ dist/
 *.log
 .DS_Store
 coverage/
-
-ARCHITECTURE.md
-PLAN.md
